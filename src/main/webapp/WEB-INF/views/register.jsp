@@ -1,86 +1,141 @@
 <%@ page contentType="text/html; charset=utf-8" %>
+<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
 <%@ taglib prefix="form" uri="http://www.springframework.org/tags/form" %>
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>회원가입</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
+            background-color: #F5F0E1;
+            font-family: sans-serif;
+        }
+        
+        .user-menu {
+      text-align: right;
+      padding: 12px 30px;
+      background-color: #5D3A00;
+      color: white;
+    }
+
+    .user-menu a {
+      color: white;
+      text-decoration: none;
+      margin-left: 20px;
+      font-weight: bold;
+    }
+
+    .user-menu span {
+      font-weight: bold;
+    }
+
+        /* 로고 */
+        .logo-container {
+            text-align: center;
+            padding: 20px 0;
         }
 
+        .logo-container img {
+            max-width: 180px;
+            height: auto;
+        }
+
+        /* 회원가입 박스 */
         .signup-container {
-            width: 450px; /* 가로 넓이 조절 */
-            margin: 20px auto; /* 상단 간격 조절 */
-            background-color: #fff; /* 배경색 유지 */
-            padding: 20px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            border: 2px solid #553830; /* 경계를 갈색으로 변경 */
+            width: 450px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            border: 2px solid #5D3A00;
         }
 
         .signup-container h2 {
             text-align: center;
             color: #333;
-        }
-
-        .signup-form {
-            margin-top: 20px;
+            margin-bottom: 30px;
         }
 
         .signup-form label {
             display: block;
             margin-bottom: 8px;
             color: #333;
+            font-weight: bold;
         }
 
         .signup-form input {
             width: 100%;
-            padding: 8px;
-            margin-bottom: 15px;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
             box-sizing: border-box;
         }
 
         .signup-form button {
-            background-color: #553830; /* 갈색으로 변경 */
+            background-color: #D97706;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 20px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            display: block; /* 블록 레벨로 변경 */
-            margin: 0 auto; /* 가운데 정렬 추가 */
+            width: 100%;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+        }
+
+        .signup-form button:hover {
+            background-color: #A86F1D;
         }
 
         .login-link {
-            text-align: center; /* 가운데 정렬 추가 */
-            margin-top: 10px;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.95rem;
         }
 
         .login-link a {
-            color: #4CAF50;
+            color: #5D3A00;
+            font-weight: bold;
             text-decoration: none;
         }
 
-        .logo-container {
-            text-align: center;
-            margin-top: 10px;
+        .login-link a:hover {
+            text-decoration: underline;
         }
 
-        .logo-container img {
-            max-width: 10%; /* 크기 증가 */
-            height: auto;
-            cursor: pointer;
+        .error-message {
+            color: red;
+            text-align: left;
+            margin-bottom: 10px;
         }
     </style>
-    <title>회원가입</title>
 </head>
 <body>
 
+<div class="user-menu">
+    <c:if test="${not empty sessionScope.user}">
+        <span>${sessionScope.user.username}님</span>
+        <a href="/logout">로그아웃</a>
+    </c:if>
+    <c:if test="${empty sessionScope.user}">
+        <a href="/login">로그인</a>
+        <a href="/register">회원가입</a>
+    </c:if>
+    <a href="/myroom">내 공부방</a>
+</div>
+
+    <!-- 로고 -->
     <div class="logo-container">
-        <a href="/"><img src="/images/logo2.png" alt="logo"></a>
+        <a href="/">
+            <img src="/images/logo2.png" alt="Eduvate Logo" />
+        </a>
     </div>
 
+    <!-- 회원가입 폼 -->
     <div class="signup-container">
         <h2>회원가입</h2>
 
@@ -93,13 +148,10 @@
 
             <label for="Username">닉네임:</label>
             <input type="text" id="Username" name="Username" required>
-            
+
             <c:if test="${not empty error}">
-    		<div style="color: red; text-align: left; margin-top: 5px;">
-        		${error}
-    		</div>
-    		<br>
-			</c:if>
+                <div class="error-message">${error}</div>
+            </c:if>
 
             <button type="submit">가입하기</button>
         </form>

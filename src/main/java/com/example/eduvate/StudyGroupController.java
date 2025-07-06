@@ -80,7 +80,6 @@ public class StudyGroupController {
         return "redirect:/studygroups";
     }
 
-
     @GetMapping("/studygroup/{groupID}")
     public String studyGroupDetail(
             @PathVariable int groupID,
@@ -136,7 +135,6 @@ public class StudyGroupController {
 
         // 현재 로그인한 사용자의 ID
         String currentUserID = ((User) session.getAttribute("user")).getUserID();
-        System.out.println("현재 사용자 ID: " + currentUserID);  // 디버깅을 위해 추가
 
         // 사용자가 쓴 내용 수정 폼을 위한 현재 사용자의 스터디 로그 가져오기
         List<GroupStudyLog> userStudyLogs = jdbcTemplate.query(
@@ -154,8 +152,21 @@ public class StudyGroupController {
             groupID, currentUserID
         );
 
-        // 사용자가 그룹에 가입했는지 여부 확인
-        boolean isUserJoined = groupMembers.stream().anyMatch(member -> member.getUserID().equals(currentUserID));
+        // 사용자가 그룹에 가입했는지 여부 확인 (DB에서 직접 조회로 확실하게)
+        boolean isUserJoined = false;
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM GroupMembers WHERE GroupID = ? AND UserID = ?",
+                Integer.class,
+                groupID, currentUserID
+            );
+            isUserJoined = count != null && count > 0;
+        } catch (EmptyResultDataAccessException e) {
+            isUserJoined = false;
+        }
+
+        // 현재 사용자가 리더인지 확인
+        boolean isLeader = group.getUserID().equals(currentUserID);
 
         model.addAttribute("group", group);
         model.addAttribute("groupMembers", groupMembers);
@@ -163,12 +174,12 @@ public class StudyGroupController {
         model.addAttribute("groupLogs", groupLogs);
         model.addAttribute("userStudyLogs", userStudyLogs);
         model.addAttribute("currentDate", LocalDate.now());
-        model.addAttribute("isUserJoined", isUserJoined); // 사용자 가입 여부 추가
-        model.addAttribute("currentUserID", currentUserID); // currentUserID 추가
+        model.addAttribute("isUserJoined", isUserJoined);
+        model.addAttribute("currentUserID", currentUserID);
+        model.addAttribute("isLeader", isLeader); // 리더 여부 추가
 
         return "studygroupdetail";
     }
-
 
     @PostMapping("/joinGroup/{groupID}")
     public String joinGroup(@PathVariable int groupID, HttpSession session) {
@@ -180,12 +191,88 @@ public class StudyGroupController {
         // 사용자 정보 가져오기
         User user = (User) session.getAttribute("user");
 
+        // 이미 가입되어 있는지 확인
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM GroupMembers WHERE GroupID = ? AND UserID = ?",
+                Integer.class,
+                groupID, user.getUserID()
+            );
+            if (count != null && count > 0) {
+                // 이미 가입되어 있다면 상세 페이지로 리다이렉트
+                return "redirect:/studygroup/" + groupID;
+            }
+        } catch (EmptyResultDataAccessException e) {
+            // 가입되어 있지 않음
+        }
+
         // GroupMembers 테이블에 데이터 추가
         String insertGroupMemberQuery = "INSERT INTO GroupMembers (GroupID, UserID) VALUES (?, ?)";
         jdbcTemplate.update(insertGroupMemberQuery, groupID, user.getUserID());
 
         // 가입 후 상세 페이지로 이동
         return "redirect:/studygroup/" + groupID;
+    }
+
+    @PostMapping("/leaveGroup/{groupID}")
+    public String leaveGroup(@PathVariable int groupID, HttpSession session) {
+        // 사용자 로그인 여부 확인
+        if (session.getAttribute("user") == null) {
+            return "redirect:/login";
+        }
+
+        // 사용자 정보 가져오기
+        User user = (User) session.getAttribute("user");
+
+        // 1. 먼저 해당 사용자의 공부 기록들을 삭제
+        String deleteStudyLogsQuery = "DELETE FROM GroupStudyLog WHERE GroupID = ? AND UserID = ?";
+        jdbcTemplate.update(deleteStudyLogsQuery, groupID, user.getUserID());
+
+        // 2. 그 다음 GroupMembers 테이블에서 해당 사용자 삭제
+        String deleteGroupMemberQuery = "DELETE FROM GroupMembers WHERE GroupID = ? AND UserID = ?";
+        jdbcTemplate.update(deleteGroupMemberQuery, groupID, user.getUserID());
+
+        // 탈퇴 후 스터디그룹 목록으로 리디렉션
+        return "redirect:/studygroups";
+    }
+    @PostMapping("/deleteStudyGroup/{groupID}")
+    public String deleteStudyGroup(@PathVariable int groupID, HttpSession session) {
+        // 사용자 로그인 여부 확인
+        if (session.getAttribute("user") == null) {
+            return "redirect:/login";
+        }
+
+        // 현재 사용자가 그룹 리더인지 확인
+        User user = (User) session.getAttribute("user");
+        try {
+            String groupLeaderID = jdbcTemplate.queryForObject(
+                "SELECT UserID FROM StudyGroup WHERE GroupID = ?",
+                String.class,
+                groupID
+            );
+
+            if (!user.getUserID().equals(groupLeaderID)) {
+                // 리더가 아니면 상세 페이지로 리다이렉트
+                return "redirect:/studygroup/" + groupID;
+            }
+
+            // 관련된 데이터들을 순서대로 삭제
+            // 1. GroupStudyLog 삭제
+            jdbcTemplate.update("DELETE FROM GroupStudyLog WHERE GroupID = ?", groupID);
+            
+            // 2. GroupMembers 삭제
+            jdbcTemplate.update("DELETE FROM GroupMembers WHERE GroupID = ?", groupID);
+            
+            // 3. StudyGroup 삭제
+            jdbcTemplate.update("DELETE FROM StudyGroup WHERE GroupID = ?", groupID);
+
+        } catch (EmptyResultDataAccessException e) {
+            // 그룹이 존재하지 않는 경우
+            return "redirect:/studygroups";
+        }
+
+        // 삭제 후 스터디그룹 목록으로 리디렉션
+        return "redirect:/studygroups";
     }
 
     // 내용 수정 엔드포인트 추가
@@ -200,10 +287,28 @@ public class StudyGroupController {
             return "redirect:/login";
         }
 
-        // GroupStudyLog 업데이트
-        String updateGroupLogQuery =
-                "UPDATE GroupStudyLog SET GroupStudyDuration = ?, GroupTopic = ?, GroupStudyDate = ? WHERE GroupLogID = ?";
-        jdbcTemplate.update(updateGroupLogQuery, studyDuration, studyTopic, java.sql.Date.valueOf(studyDate), logID);
+        // 현재 사용자가 해당 로그의 작성자인지 확인
+        User user = (User) session.getAttribute("user");
+        try {
+            String logUserID = jdbcTemplate.queryForObject(
+                "SELECT UserID FROM GroupStudyLog WHERE GroupLogID = ?",
+                String.class,
+                logID
+            );
+
+            if (!user.getUserID().equals(logUserID)) {
+                return "redirect:/studygroup/" + groupID;
+            }
+
+            // GroupStudyLog 업데이트
+            String updateGroupLogQuery =
+                    "UPDATE GroupStudyLog SET GroupStudyDuration = ?, GroupTopic = ?, GroupStudyDate = ? WHERE GroupLogID = ?";
+            jdbcTemplate.update(updateGroupLogQuery, studyDuration, studyTopic, java.sql.Date.valueOf(studyDate), logID);
+
+        } catch (EmptyResultDataAccessException e) {
+            // 로그가 존재하지 않는 경우
+            return "redirect:/studygroup/" + groupID;
+        }
 
         // 수정 후 상세 페이지로 리디렉션
         return "redirect:/studygroup/" + groupID;
@@ -229,6 +334,39 @@ public class StudyGroupController {
         jdbcTemplate.update(insertGroupLogQuery, groupID, user.getUserID(), java.sql.Date.valueOf(studyDate), studyDuration, studyTopic);
 
         // 작성 후 상세 페이지로 리디렉션
+        return "redirect:/studygroup/" + groupID;
+    }
+    
+    // 공부 로그 삭제 엔드포인트 추가
+    @GetMapping("/deleteStudyLog/{groupID}/{logID}")
+    public String deleteStudyLog(@PathVariable int groupID, @PathVariable int logID, HttpSession session) {
+        // 사용자 로그인 여부 확인
+        if (session.getAttribute("user") == null) {
+            return "redirect:/login";
+        }
+
+        // 현재 사용자가 해당 로그의 작성자인지 확인
+        User user = (User) session.getAttribute("user");
+        try {
+            String logUserID = jdbcTemplate.queryForObject(
+                "SELECT UserID FROM GroupStudyLog WHERE GroupLogID = ?",
+                String.class,
+                logID
+            );
+
+            if (!user.getUserID().equals(logUserID)) {
+                return "redirect:/studygroup/" + groupID;
+            }
+
+            // GroupStudyLog 삭제
+            jdbcTemplate.update("DELETE FROM GroupStudyLog WHERE GroupLogID = ?", logID);
+
+        } catch (EmptyResultDataAccessException e) {
+            // 로그가 존재하지 않는 경우
+            return "redirect:/studygroup/" + groupID;
+        }
+
+        // 삭제 후 상세 페이지로 리디렉션
         return "redirect:/studygroup/" + groupID;
     }
 }
